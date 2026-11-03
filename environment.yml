@@ -1,0 +1,14 @@
+name: blast_parser_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - blast>=2.12
+  - biopython>=1.80
+  - pandas>=1.5
+  - openpyxl>=3.0
+  - numpy>=1.23
+  - matplotlib>=3.5
+  - seaborn>=0.12

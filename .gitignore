@@ -179,3 +179,12 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+
+configs/config_*.py
+
+!configs/config_template.py
+
+inputs/*
+outputs/*
+.DS_Store

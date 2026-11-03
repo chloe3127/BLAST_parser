@@ -1,0 +1,6 @@
+biopython>=1.80
+pandas>=1.5
+openpyxl>=3.0
+numpy>=1.23
+matplotlib>=3.5
+seaborn>=0.12
