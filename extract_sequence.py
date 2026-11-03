@@ -21,7 +21,7 @@ def blast_to_zero_based(s_start, s_end):
     return min(s_start, s_end) - 1, max(s_start, s_end)
 
 def extract_sequence_no_flank(contig_seq, left_0, right_0, strand):
-    #extract the aligned span; left_0/right_0 are 0-based, end-exclusive
+    #extract the gene; left_0/right_0 are 0-based, end-exclusive
     contig_length = len(contig_seq.seq)
 
     extract_start = max(0, left_0)
@@ -48,7 +48,7 @@ def extract_sequence_no_flank(contig_seq, left_0, right_0, strand):
     }
 
 def extract_sequence_with_flank(contig_seq, left_0, right_0, strand, flanking_bp):
-    #extract the aligned span plus flanking_bp each side, clipped at contig edges; left_0/right_0 are 0-based, end-exclusive
+    #extract the gene plus flanking_bp each side, clipped at contig edges; left_0/right_0 are 0-based, end-exclusive
     contig_length = len(contig_seq.seq)
 
     extract_start = max(0, left_0 - flanking_bp)
@@ -159,18 +159,18 @@ def check_sequence_quality(seq_data, boundary_critical, boundary_warning):
     }
 
 def remove_ambiguous_bases(extracted_seqs):
-    #drop a locus if any sequence written for it (aligned span or padded) contains an N, so all outputs keep the same loci
+    #drop a locus if any sequence written for it (gene or gene with flank) contains an N, so all outputs keep the same loci
     total = len(extracted_seqs)
     filtered = []
     for s in extracted_seqs:
-        s["n_in_aligned_span"] = 'N' in s["sequence"].upper()
-        s["n_in_padding_only"] = (
-            not s["n_in_aligned_span"] and "padded" in s and 'N' in s["padded"]["sequence"].upper()
+        s["n_in_gene"] = 'N' in s["sequence"].upper()
+        s["n_in_flank_only"] = (
+            not s["n_in_gene"] and "with_flank" in s and 'N' in s["with_flank"]["sequence"].upper()
         )
-        if s["n_in_aligned_span"]:
-            s["outcome"] = "excluded_N_in_aligned_span"
-        elif s["n_in_padding_only"]:
-            s["outcome"] = "excluded_N_in_padding_only"
+        if s["n_in_gene"]:
+            s["outcome"] = "excluded_N_in_gene"
+        elif s["n_in_flank_only"]:
+            s["outcome"] = "excluded_N_in_flank_only"
         else:
             s["outcome"] = "retained"
             filtered.append(s)
@@ -181,19 +181,19 @@ def remove_ambiguous_bases(extracted_seqs):
     logger.info(f"Sequences after filtering for ambiguous bases: {len(filtered)}")
     return filtered
 
-def write_extracted_fasta(sequences, output_dir, config, padded=False):
-    #write the BLAST-aligned span (may be only part of the gene) or the fixed-length padded sequence
+def write_extracted_fasta(sequences, output_dir, config, with_flank=False):
+    #write the gene, or the gene with flanking_bp each side
     gene_name = config.gene_name
-    if padded:
-        label = f"{config.extraction_params['flanking_bp']}bp_padded"
-        region = "padded"
+    if with_flank:
+        label = "gene_with_flank"
+        region = "gene_with_flank"
     else:
-        label = "aligned_span"
-        region = "aligned_span"
+        label = "gene"
+        region = "gene"
 
     all_records = []
     for seq in sequences:
-        data = seq["padded"] if padded else seq
+        data = seq["with_flank"] if with_flank else seq
         header_parts = [
             f"isolate={seq['isolate_id']}",
             f"copy={seq['gene_copy']}",
@@ -340,7 +340,7 @@ def extract_sequences(blast_results, combined_fasta, output_dir, config):
 
         if extract_flank:
             seq_with_flank = extract_sequence_with_flank(genome_seqs[contig_id], left_0, right_0, hit["strand"], flanking_bp)
-            extracted_seq["padded"] = {
+            extracted_seq["with_flank"] = {
                 "sequence": seq_with_flank["sequence"],
                 "extract_start": seq_with_flank["extract_start"],
                 "extract_end": seq_with_flank["extract_end"]
@@ -354,7 +354,7 @@ def extract_sequences(blast_results, combined_fasta, output_dir, config):
     if extracted:
         write_extracted_fasta(extracted, Path(output_dir), config)
         if extract_flank:
-            write_extracted_fasta(extracted, Path(output_dir), config, padded=True)
+            write_extracted_fasta(extracted, Path(output_dir), config, with_flank=True)
         write_multicopy_fastas(extracted, Path(output_dir) / "multicopy", config)
     else:
         logger.warning("No sequences retained for extraction; no FASTA files written")

@@ -225,7 +225,7 @@ def make_locus_table(gene_loci, primer_hits, config):
 
         row["primers_face_each_other"] = None
         row["primer_span_bp"] = None
-        row["span_covers_aligned_span"] = None
+        row["span_covers_gene"] = None
         row["span_within_max_pcr_fragment_length"] = None
 
         #only checks the geometry - no PCR product is inferred
@@ -235,7 +235,7 @@ def make_locus_table(gene_loci, primer_hits, config):
                 span = sorted_range(right)[1] - sorted_range(left)[0] + 1
                 row["primers_face_each_other"] = True
                 row["primer_span_bp"] = span
-                row["span_covers_aligned_span"] = sorted_range(left)[0] <= l_low and sorted_range(right)[1] >= l_high
+                row["span_covers_gene"] = sorted_range(left)[0] <= l_low and sorted_range(right)[1] >= l_high
                 row["span_within_max_pcr_fragment_length"] = span <= max_fragment if max_fragment else None
             else:
                 row["primers_face_each_other"] = False
@@ -243,6 +243,50 @@ def make_locus_table(gene_loci, primer_hits, config):
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+def make_pcr_fragment_table(fragments):
+    columns = ["id", "fragment_id", "contig", "start", "end", "length_bp", "orientation", "forward_primer", "reverse_primer",
+               "forward_primer_differences", "reverse_primer_differences", "gene_relation", "gene_query", "genomic_context", "n_count"]
+    rows = [{
+        "id": f["isolate_id"],
+        "fragment_id": f["fragment_id"],
+        "contig": f["contig_orig"],
+        "start": f["start"],
+        "end": f["end"],
+        "length_bp": f["length"],
+        "orientation": f["orientation"],
+        "forward_primer": f["forward_primer"],
+        "reverse_primer": f["reverse_primer"],
+        "forward_primer_differences": f["forward_primer_differences"],
+        "reverse_primer_differences": f["reverse_primer_differences"],
+        "gene_relation": f["gene_relation"],
+        "gene_query": f["gene_query"],
+        "genomic_context": f["genomic_context"],
+        "n_count": f["n_count"],
+    } for f in fragments]
+    return pd.DataFrame(rows, columns = columns)
+
+
+def make_pcr_length_summary(fragments):
+    columns = ["forward_primer", "reverse_primer", "gene_relation", "fragments", "isolates", "min_bp", "median_bp", "mean_bp", "max_bp"]
+    if not fragments:
+        return pd.DataFrame(columns = columns)
+    df = make_pcr_fragment_table(fragments)
+    rows = []
+    for (fwd, rev, relation), group in df.groupby(["forward_primer", "reverse_primer", "gene_relation"]):
+        rows.append({
+            "forward_primer": fwd,
+            "reverse_primer": rev,
+            "gene_relation": relation,
+            "fragments": len(group),
+            "isolates": group["id"].nunique(),
+            "min_bp": group["length_bp"].min(),
+            "median_bp": group["length_bp"].median(),
+            "mean_bp": round(group["length_bp"].mean(), 1),
+            "max_bp": group["length_bp"].max(),
+        })
+    return pd.DataFrame(rows, columns = columns)
 
 
 def create_primer_report(blast_results, config, isolate_ids, output_dir):
@@ -259,10 +303,11 @@ def create_primer_report(blast_results, config, isolate_ids, output_dir):
         "Only primer hits passing the parser cutoffs are listed; hits with more differences than max_mismatches are not counted.",
         "total_differences = BLAST mismatches + gaps + unaligned primer bases.",
         f"Positions are numbered from the primer 5' end (position_from_5prime) or 3' end; the last {last_bases} bases are flagged because differences there can block extension.",
-        "Gene locus = merged BLAST-aligned gene hit (may be a partial gene); 'inside gene' means the primer overlaps that span.",
+        "Gene locus = merged BLAST gene hit (may be a partial gene); 'inside gene' means the primer overlaps it.",
         f"Primers more than flank_buffer ({buffer} bp) from every locus, or on a contig with no locus, are called off-target.",
         "position_vs_gene is in gene orientation; primer_direction says whether the primer extends toward the gene.",
-        "Per-locus span columns describe primer geometry only; no PCR product is inferred or extracted.",
+        "Per-locus span columns only check primer geometry; the PCR fragments sheet and FASTA have the in silico products.",
+        "PCR fragment = a forward and a reverse primer hit on the same contig, opposite strands, facing each other, no more than max_pcr_fragment_length apart. It includes both primer sites and is written from the forward primer. Fragments with an N are kept (see n_count).",
     ]})
 
     output_path = Path(output_dir) / f"{config.gene_name}_primer_report.xlsx"
@@ -271,6 +316,8 @@ def create_primer_report(blast_results, config, isolate_ids, output_dir):
         make_mismatch_distribution(hits_df, config).to_excel(writer, sheet_name = "Differences per hit", index = False)
         make_position_table(hits_df, config).to_excel(writer, sheet_name = "Differences by position", index = False)
         make_locus_table(gene_loci, primer_hits, config).to_excel(writer, sheet_name = "Primers per locus", index = False)
+        make_pcr_fragment_table(blast_results.get("pcr_fragments", [])).to_excel(writer, sheet_name = "PCR fragments", index = False)
+        make_pcr_length_summary(blast_results.get("pcr_fragments", [])).to_excel(writer, sheet_name = "PCR fragment lengths", index = False)
         hits_df.to_excel(writer, sheet_name = "Primer hits", index = False)
         notes.to_excel(writer, sheet_name = "Notes", index = False)
         format_workbook(writer)

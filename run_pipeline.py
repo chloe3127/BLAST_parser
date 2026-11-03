@@ -11,6 +11,7 @@ from blast_prep import create_combined_genome_fasta, make_blast_db, create_refer
 from blast_runner import run_all_blast_searches
 from blast_parser import parse_blast_outputs
 from extract_sequence import extract_sequences
+from pcr_fragments import find_pcr_fragments, write_pcr_fragments
 from reporting import generate_all_reports
 from plots import generate_all_plots
 
@@ -132,6 +133,12 @@ def run_gene(config, dirs, combined_fasta, contig_id_map, isolate_ids, db_path):
 
     parsed = parse_blast_outputs(blast_outputs, config, contig_id_map)
     extracted, igrs, extraction_info = extract_sequences(parsed["gene_hits"], combined_fasta, dirs["sequences"], config)
+
+    #in silico PCR fragments, only if primers were searched
+    parsed["pcr_fragments"] = []
+    if blast_outputs.get("primers") is not None:
+        parsed["pcr_fragments"] = find_pcr_fragments(parsed, combined_fasta, config)
+        write_pcr_fragments(parsed["pcr_fragments"], dirs["pcr_fragments"], config)
 
     pipeline_logger.info(
         "Isolates searched: %d; isolates with a retained locus: %d; loci retained: %d",

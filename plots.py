@@ -227,9 +227,9 @@ def plot_sequence_extraction(before_sequences, after_sequences, config, output_d
 
     gene_name = config.gene_name
     params = config.extraction_params
-    #padding is only extracted when extract_flank is on
-    padding_on = bool(params.get("extract_flank"))
-    requested = int(params["flanking_bp"]) if padding_on else 0
+    #flank is only extracted when extract_flank is on
+    flank_on = bool(params.get("extract_flank"))
+    requested = int(params["flanking_bp"]) if flank_on else 0
 
     fig = Figure(figsize = (15, 9), layout = "constrained")
     FigureCanvasAgg(fig)
@@ -277,27 +277,27 @@ def plot_sequence_extraction(before_sequences, after_sequences, config, output_d
                     0.5, 0.5, "No sequences retained",
                     transform = ax.transAxes, ha = "center", va = "center"
                 )
-            context_ax.set_title("Flanks recovered around BLAST-aligned span", fontsize = 10)
-            length_ax.set_title("BLAST-aligned span length", fontsize = 10)
+            context_ax.set_title("Flanks recovered around gene", fontsize = 10)
+            length_ax.set_title("Gene length", fontsize = 10)
             continue
 
-        #padding recovered either side of the BLAST-aligned span, clipped at contig edges
-        if not padding_on:
+        #flank recovered either side of the gene, clipped at contig edges
+        if not flank_on:
             context_ax.text(
-                0.5, 0.5, "Padding not extracted\n(extract_flank is off)",
+                0.5, 0.5, "Flank not extracted\n(extract_flank is off)",
                 transform = context_ax.transAxes, ha = "center", va = "center"
             )
-            context_ax.set_title("Flanks recovered around BLAST-aligned span", fontsize = 10)
+            context_ax.set_title("Flanks recovered around gene", fontsize = 10)
         else:
             upstream_lengths = []
             downstream_lengths = []
 
             for seq in sequences:
-                padded = seq.get("padded")
-                if not padded:
+                with_flank = seq.get("with_flank")
+                if not with_flank:
                     continue
-                left_flank = seq["gene_start"] - padded["extract_start"]
-                right_flank = padded["extract_end"] - seq["gene_end"]
+                left_flank = seq["gene_start"] - with_flank["extract_start"]
+                right_flank = with_flank["extract_end"] - seq["gene_end"]
 
                 if seq["strand"] == "forward":
                     upstream_lengths.append(left_flank)
@@ -321,14 +321,14 @@ def plot_sequence_extraction(before_sequences, after_sequences, config, output_d
                     f"Downstream: {downstream_complete:,} full length"
                 ]
             )
-            context_ax.set_title("Flanks recovered around BLAST-aligned span", fontsize = 10)
+            context_ax.set_title("Flanks recovered around gene", fontsize = 10)
             context_ax.axvline(
                 requested, color = "#d18c20", linestyle = "--",
                 label = f"Requested: {requested:,} bp"
             )
             context_ax.legend(fontsize = 8)
 
-        #BLAST-aligned span length (may be a partial gene)
+        #gene length
         lengths = [len(seq["sequence"]) for seq in sequences]
         median_length = np.median(lengths)
 
@@ -340,14 +340,14 @@ def plot_sequence_extraction(before_sequences, after_sequences, config, output_d
             median_length, color = "#d18c20", linestyle = "--",
             label = f"Median: {median_length:,.0f} bp"
         )
-        length_ax.set_title("BLAST-aligned span length", fontsize = 10)
+        length_ax.set_title("Gene length", fontsize = 10)
         length_ax.legend(fontsize = 8)
 
     for row_axes in axes:
         row_axes[0].set_ylim(0, boundary_max * 1.35)
         row_axes[1].set_xlabel("Flanking sequence length (bp)")
         row_axes[1].set_ylabel("Loci per direction")
-        row_axes[2].set_xlabel("BLAST-aligned span length (bp)")
+        row_axes[2].set_xlabel("Gene length (bp)")
         row_axes[2].set_ylabel("Loci")
 
         for ax in row_axes:
@@ -357,7 +357,7 @@ def plot_sequence_extraction(before_sequences, after_sequences, config, output_d
 
     removed = len(before_sequences) - len(after_sequences)
     fig.suptitle(
-        f"{gene_name} - sequence extraction QC (BLAST-aligned spans)\n"
+        f"{gene_name} - sequence extraction QC\n"
         f"N filtering removed {removed:,}/{len(before_sequences):,} loci "
         f"({removed / len(before_sequences):.1%}); "
         f"boundary thresholds: critical ≤ {params['boundary_critical_distance']} bp, "
@@ -609,7 +609,7 @@ def save_figure(fig, output_path, label):
     logger.info("Saved %s plot: %s", label, output_path)
     return output_path
 
-#7 - BLAST-aligned span length compared with the reference query (a passing hit can be a partial gene)
+#7 - gene length compared with the reference query
 def plot_span_vs_reference(before_sequences, config, output_dir):
     sequences = [s for s in before_sequences if s.get("query_length")]
     if not sequences:
@@ -630,7 +630,7 @@ def plot_span_vs_reference(before_sequences, config, output_dir):
     axes[0].hist(fractions, bins = bins, color = "#9da6cf", edgecolor = "white", linewidth = 0.3)
     axes[0].axvline(1, color = "#d18c20", linestyle = "--", label = "Span = reference length")
     axes[0].axvline(float(np.median(fractions)), color = "#d94c4c", linestyle = ":", label = f"Median: {np.median(fractions):.2f}")
-    axes[0].set(xlabel = "BLAST-aligned span length / reference query length", ylabel = "Loci", title = "Fraction of reference covered by the aligned span")
+    axes[0].set(xlabel = "Gene length / reference query length", ylabel = "Loci", title = "Fraction of reference covered by the gene")
     axes[0].legend(fontsize = 8)
 
     for status, colour in status_colours.items():
@@ -641,13 +641,13 @@ def plot_span_vs_reference(before_sequences, config, output_dir):
     pad = max(5.0, (values_high - values_low) * 0.05)
     limit = [values_low - pad, values_high + pad]
     axes[1].plot(limit, limit, color = "#d18c20", linestyle = "--", linewidth = 1)
-    axes[1].set(xlabel = "Reference query length (bp)", ylabel = "BLAST-aligned span length (bp)", title = "Aligned span vs reference (colour = contig boundary status)", xlim = limit, ylim = limit)
+    axes[1].set(xlabel = "Reference query length (bp)", ylabel = "Gene length (bp)", title = "Gene length vs reference (colour = contig boundary status)", xlim = limit, ylim = limit)
     axes[1].legend(fontsize = 8)
 
     for ax in axes:
         ax.grid(alpha = 0.2)
         ax.set_axisbelow(True)
-    fig.suptitle(f"{config.gene_name} - BLAST-aligned span vs reference length (n={len(sequences):,} loci, before N filtering)", fontsize = 13)
+    fig.suptitle(f"{config.gene_name} - gene length vs reference length (n={len(sequences):,} loci, before N filtering)", fontsize = 13)
     return save_figure(fig, Path(output_dir) / f"{config.gene_name}_span_vs_reference.png", "span vs reference")
 
 #8 - Loci per isolate
@@ -739,7 +739,7 @@ def plot_query_heatmap(blast_outputs, config, isolate_ids, output_dir):
 
 #11 - Do the primers hit the gene locus?
 def plot_primer_locus(blast_results, config, output_dir):
-    #aggregate view so it still works with lots of isolates, positions are in gene orientation (0 = start of aligned span)
+    #aggregate view so it still works with lots of isolates, positions are in gene orientation (0 = start of gene)
     blast_results = blast_results or {}
     if "primers" not in blast_results.get("searches_run", set()):
         return None
@@ -807,7 +807,7 @@ def plot_primer_locus(blast_results, config, output_dir):
     ax.plot([], [], color = "#d94c4c", label = "hits with a difference in last 5 bases (outline)")
     ax.axvline(0, color = "#555555", linewidth = 0.8)
     ax.axvline(median_length, color = "#555555", linewidth = 0.8)
-    ax.set(xlabel = "Primer start in gene orientation (bp from start of BLAST-aligned span, 10 bp bins)", ylabel = "Primer hits",
+    ax.set(xlabel = "Primer start in gene orientation (bp from start of gene, 10 bp bins)", ylabel = "Primer hits",
            title = f"Where primers bind around the gene (within {buffer:g} bp)", ylim = (-top * 0.15, top * 1.15))
     ax.set_yticks([t for t in ax.get_yticks() if t >= 0])
     ax.legend(fontsize = 8)
@@ -829,6 +829,45 @@ def plot_primer_locus(blast_results, config, output_dir):
     fig.suptitle(f"{config.gene_name} - primer positions around candidate loci" + (f"\n{note}" if note else ""), fontsize = 12)
     return save_figure(fig, Path(output_dir) / f"{config.gene_name}_primer_locus.png", "primer locus")
 
+#9 - in silico PCR fragment lengths
+def plot_pcr_fragment_lengths(blast_results, config, output_dir):
+    fragments = (blast_results or {}).get("pcr_fragments", [])
+    if not fragments:
+        return None
+
+    lengths = np.asarray([f["length"] for f in fragments], dtype = float)
+    differences = np.asarray([f["forward_primer_differences"] + f["reverse_primer_differences"] for f in fragments])
+    relations = np.asarray([f["gene_relation"] for f in fragments])
+    bins = np.arange(lengths.min() - 5, lengths.max() + 15, 10)
+
+    fig = Figure(figsize = (15, 5.5), layout = "constrained")
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(1, 2)
+
+    relation_names = sorted(set(relations))
+    palette = ["#9da6cf", "#d18c20", "#70b6a1", "#e9c46a"]
+    axes[0].hist([lengths[relations == r] for r in relation_names], bins = bins, stacked = True, color = palette[:len(relation_names)],
+                 edgecolor = "white", linewidth = 0.3, label = [f"{r} (n={int((relations == r).sum()):,})" for r in relation_names])
+    axes[0].set(xlabel = "Fragment length (bp)", ylabel = "Fragments", title = "Fragment length by overlap with the gene")
+
+    groups = [("No differences", differences == 0, "#70b6a1"), ("1-2 differences", (differences >= 1) & (differences <= 2), "#e9c46a"), ("3+ differences", differences >= 3, "#d94c4c")]
+    axes[1].hist([lengths[mask] for _, mask, _ in groups], bins = bins, stacked = True, color = [c for _, _, c in groups],
+                 edgecolor = "white", linewidth = 0.3, label = [f"{name} (n={int(mask.sum()):,})" for name, mask, _ in groups])
+    axes[1].set(xlabel = "Fragment length (bp)", ylabel = "Fragments", title = "Fragment length by total primer differences")
+
+    for ax in axes:
+        ax.axvline(float(np.median(lengths)), color = "#d94c4c", linestyle = ":", label = f"Median: {np.median(lengths):.0f} bp")
+        max_length = config.primer_blast_params.get("max_pcr_fragment_length")
+        if max_length and max_length <= lengths.max() + 50:
+            ax.axvline(max_length, color = "#d18c20", linestyle = "--", label = f"max_pcr_fragment_length ({max_length})")
+        ax.legend(fontsize = 8)
+        ax.grid(alpha = 0.2)
+        ax.set_axisbelow(True)
+
+    isolates = len({f["isolate_id"] for f in fragments})
+    fig.suptitle(f"{config.gene_name} - in silico PCR fragment lengths (n={len(fragments):,} fragments, {isolates:,} isolates)", fontsize = 13)
+    return save_figure(fig, Path(output_dir) / f"{config.gene_name}_pcr_fragment_lengths.png", "PCR fragment length")
+
 #one function to make all plots
 
 def generate_all_plots(config, blast_outputs, extracted_sequences, before_N_filtering, output_dir, blast_results = None):
@@ -840,6 +879,7 @@ def generate_all_plots(config, blast_outputs, extracted_sequences, before_N_filt
         "copy_number": plot_copy_number(blast_results, extracted_sequences, config, output_dir),
         "primer_locus": plot_primer_locus(blast_results, config, output_dir),
         "primer_mismatch": plot_primer_mismatch(blast_outputs, config, output_dir),
+        "pcr_fragment_lengths": plot_pcr_fragment_lengths(blast_results, config, output_dir),
         "sequence_extraction": plot_sequence_extraction(before_N_filtering, extracted_sequences, config, output_dir),
         "span_vs_reference": plot_span_vs_reference(before_N_filtering, config, output_dir),
         "retained_loci_quality": plot_retained_quality(extracted_sequences, config, output_dir),

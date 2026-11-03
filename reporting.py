@@ -382,10 +382,10 @@ def make_gene_flank_table(gene_hits_before_filter, retained_hits, config, forwar
             "identity": round(hit["identity"], 2),
             "coverage": round(hit["coverage"], 2),
             "reference_query_length": hit.get("q_length"),
-            "aligned_span_length": abs(hit["s_end"] - hit["s_start"]) + 1,
+            "gene_length": abs(hit["s_end"] - hit["s_start"]) + 1,
             "genomic_context": hit.get("genomic_context")
         }
-        row["span_fraction_of_reference"] = round(row["aligned_span_length"] / row["reference_query_length"], 3) if row["reference_query_length"] else None
+        row["span_fraction_of_reference"] = round(row["gene_length"] / row["reference_query_length"], 3) if row["reference_query_length"] else None
         if forward_primer_hits or reverse_primer_hits:
             counts = primer_counts_for_locus(hit, forward_primer_hits, reverse_primer_hits, config.flank_buffer)
             row.update({
@@ -883,40 +883,40 @@ def create_blast_summary_report(blast_results, config, isolate_ids, output_dir, 
 
 #2 - Sequence extraction report
 def make_extraction_table(sequences, kept_sequences, config):
-    #sequences are BLAST-aligned spans and may be partial genes
+    #gene sequences are the BLAST-aligned region so may be partial genes
     columns = [
         "id", "gene_copy", "contig", "outcome",
-        "N_filter", "N_in_aligned_span", "N_in_padding_only", "aligned_span_N_count", "boundary_status", "blast_query",
-        "genomic_context", "contig_length", "aligned_span_start", "aligned_span_end", "aligned_span_length",
-        "reference_query_length", "span_fraction_of_reference", "padded_start", "padded_end", "padded_length",
+        "N_filter", "N_in_gene", "N_in_flank_only", "gene_N_count", "boundary_status", "blast_query",
+        "genomic_context", "contig_length", "gene_start", "gene_end", "gene_length",
+        "reference_query_length", "span_fraction_of_reference", "gene_with_flank_start", "gene_with_flank_end", "gene_with_flank_length",
         "dist_to_contig_start", "dist_to_contig_end", "strand", "flags"
     ]
 
     rows = []
     for s in sequences:
         key = (s["isolate_id"], s["gene_copy"], s["contig_id"])
-        padded = s.get("padded")
+        with_flank = s.get("with_flank")
         rows.append({
             "id": s["isolate_id"],
             "gene_copy": s["gene_copy"],
             "contig": s.get("original_contig_id", s["contig_id"]),
             "outcome": s.get("outcome"),
             "N_filter": "Kept" if key in kept_sequences else "Removed",
-            "N_in_aligned_span": bool(s.get("n_in_aligned_span")),
-            "N_in_padding_only": bool(s.get("n_in_padding_only")),
-            "aligned_span_N_count": s["sequence"].upper().count("N"),
+            "N_in_gene": bool(s.get("n_in_gene")),
+            "N_in_flank_only": bool(s.get("n_in_flank_only")),
+            "gene_N_count": s["sequence"].upper().count("N"),
             "boundary_status": s["boundary_status"],
             "blast_query": s.get("blast_query", "unknown"),
             "genomic_context": s.get("genomic_context", "unknown"),
             "contig_length": s["contig_length"],
-            "aligned_span_start": s["gene_start"],
-            "aligned_span_end": s["gene_end"],
-            "aligned_span_length": len(s["sequence"]),
+            "gene_start": s["gene_start"],
+            "gene_end": s["gene_end"],
+            "gene_length": len(s["sequence"]),
             "reference_query_length": s.get("query_length"),
             "span_fraction_of_reference": round(len(s["sequence"]) / s["query_length"], 3) if s.get("query_length") else None,
-            "padded_start": padded["extract_start"] if padded else None,
-            "padded_end": padded["extract_end"] if padded else None,
-            "padded_length": len(padded["sequence"]) if padded else None,
+            "gene_with_flank_start": with_flank["extract_start"] if with_flank else None,
+            "gene_with_flank_end": with_flank["extract_end"] if with_flank else None,
+            "gene_with_flank_length": len(with_flank["sequence"]) if with_flank else None,
             "dist_to_contig_start": s["dist_to_contig_start"],
             "dist_to_contig_end": s["dist_to_contig_end"],
             "strand": s["strand"],
@@ -944,14 +944,14 @@ def create_sequence_extraction_report(before_N_filtering, extracted_sequences, c
 
     parameter_rows = [
         ("Gene name", gene_name),
-        ("Padding extracted", bool(params.get("extract_flank"))),
+        ("Flank extracted", bool(params.get("extract_flank"))),
         ("Flanking bp used", params["flanking_bp"] if params.get("extract_flank") else 0),
         ("Critical boundary distance (bp)", params["boundary_critical_distance"]),
         ("Warning boundary distance (bp)", params["boundary_warning_distance"]),
         ("Coordinate system", "0-based, end-exclusive"),
         ("Boundary assessment", "BLAST hit boundaries"),
-        ("Sequence type", "BLAST-aligned span (may be a partial gene)"),
-        ("N filter scope", "BLAST-aligned span plus padding (if extracted)")
+        ("Sequence type", "Gene = BLAST-aligned region (may be a partial gene)"),
+        ("N filter scope", "Gene plus flank (if extracted)")
     ]
     parameter_df = pd.DataFrame(parameter_rows, columns = ["Parameter", "Value"])
 
